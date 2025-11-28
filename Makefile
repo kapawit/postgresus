@@ -1,37 +1,39 @@
-# Makefile for building and pushing Docker images to GHCR
+# Makefile for building and pushing Docker images to GCP Artifact Registry
 
 # Usage: 
 #   make build                       # build local image (latest tag)
 #   make build TAG=v1.0.0            # build local image with tag v1.0.0
-#   make build-push GHCR_TOKEN=xxx   # build and push multi-arch image to GHCR
-#   make ghcr-login GHCR_TOKEN=xxx   # login to GHCR
+#   make build-push GCP_PROJECT=xxx  # build and push multi-arch image to GCP Artifact Registry
+#   make gcp-login                   # configure docker for GCP Artifact Registry
 #   make push TAG=v1.0.0             # push image (ensure login)
 #   make clean                       # remove local image
 
 # Defaults (override on cli)
-GHCR_USER ?= $(shell git config user.name || echo "kapawit")
+GCP_PROJECT ?= dipay-staging-experiment
+REPOSITORY ?= tools
 IMAGE_NAME ?= postgresus
 TAG ?= latest
 APP_VERSION ?= $(TAG)
 PLATFORMS ?= linux/amd64,linux/arm64
 
 # Derived values
-IMAGE := ghcr.io/$(GHCR_USER)/$(IMAGE_NAME):$(TAG)
+IMAGE := asia-southeast2-docker.pkg.dev/$(GCP_PROJECT)/$(REPOSITORY)/$(IMAGE_NAME):$(TAG)
 
-.PHONY: help build buildx build-push ghcr-login push clean
+.PHONY: help build buildx build-push gcp-login push clean
 
 help:
-	@echo "Makefile targets for building and pushing Docker images to GHCR"
+	@echo "Makefile targets for building and pushing Docker images to GCP Artifact Registry"
 	@echo "Variables (override as needed):"
-	@echo "  GHCR_USER ($(GHCR_USER))"
+	@echo "  GCP_PROJECT ($(GCP_PROJECT))"
+	@echo "  REPOSITORY ($(REPOSITORY))"
 	@echo "  IMAGE_NAME ($(IMAGE_NAME))"
 	@echo "  TAG ($(TAG))"
 	@echo "  APP_VERSION ($(APP_VERSION))"
 	@echo "  PLATFORMS ($(PLATFORMS))"
 	@echo "Examples:"
 	@echo "  make build TAG=v1.0.0"
-	@echo "  make ghcr-login GHCR_TOKEN=<YOUR_TOKEN>"
-	@echo "  make build-push GHCR_TOKEN=<YOUR_TOKEN> TAG=v1.0.0"
+	@echo "  make gcp-login"
+	@echo "  make build-push GCP_PROJECT=<YOUR_PROJECT_ID> REPOSITORY=<REPO> TAG=v1.0.0"
 
 # Build a local image using Docker (single platform)
 build:
@@ -43,28 +45,22 @@ buildx:
 	@echo "Building multi-platform image (no push): $(IMAGE)"
 	docker buildx build --platform=$(PLATFORMS) -t $(IMAGE) --build-arg APP_VERSION=$(APP_VERSION) --load .
 
-# Build and push multi-platform image to GHCR
+# Build and push multi-platform image to GCP Artifact Registry
 build-push:
 	@echo "Building and pushing multi-platform image: $(IMAGE)"
 	# Ensure buildx builder exists
 	@if ! docker buildx inspect multi-builder >/dev/null 2>&1; then \
 		 docker buildx create --use --name multi-builder; \
 	fi
-	@echo "Logging into GHCR..."
-	@if [ -z "$(GHCR_TOKEN)" ]; then \
-		echo "GHCR_TOKEN is required (set it via environment variable or pass to 'make')"; exit 1; \
-	fi
-	@echo $(GHCR_TOKEN) | docker login ghcr.io -u $(GHCR_USER) --password-stdin
+	@echo "Configuring Docker for GCP Artifact Registry..."
+	gcloud auth configure-docker asia-southeast2-docker.pkg.dev --quiet
 	# Build and push
 	docker buildx build --platform=$(PLATFORMS) -t $(IMAGE) --build-arg APP_VERSION=$(APP_VERSION) --push .
 
-# Login to GHCR (requires GHCR_TOKEN set)
-ghcr-login:
-	@echo "Logging into GHCR at ghcr.io as $(GHCR_USER)"
-	@if [ -z "$(GHCR_TOKEN)" ]; then \
-		echo "GHCR_TOKEN is required (set it via environment variable or pass to 'make')"; exit 1; \
-	fi
-	@echo $(GHCR_TOKEN) | docker login ghcr.io -u $(GHCR_USER) --password-stdin
+# Configure Docker for GCP Artifact Registry
+gcp-login:
+	@echo "Configuring Docker for GCP Artifact Registry at asia-southeast2-docker.pkg.dev"
+	gcloud auth configure-docker asia-southeast2-docker.pkg.dev --quiet
 
 # Push local image to GHCR (single-platform tag)
 push:
